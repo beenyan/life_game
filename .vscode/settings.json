@@ -1,0 +1,17 @@
+{
+    "files.associations": {
+        "main.h": "c",
+        "vector": "cpp",
+        "sed.h": "c",
+        "hex_keypad.h": "c",
+        "max7219_7segment.h": "c",
+        "freertos.h": "c",
+        "stdio.h": "c",
+        "stdbool.h": "c",
+        "queue.h": "c",
+        "task.h": "c",
+        "stm32f4xx_hal.h": "c",
+        "image.h": "c",
+        "usart.h": "c"
+    }
+}

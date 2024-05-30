@@ -1,0 +1,24 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "cwd": "${workspaceRoot}",
+            "executable": "${workspaceRoot}/build/${workspaceFolderBasename}.elf",
+            "name": "Debug with OpenOCD",
+            "request": "launch",
+            "type": "cortex-debug",
+            "servertype": "openocd",
+            "configFiles": [
+                "interface/stlink-v2.cfg",
+                "target/stm32f4x.cfg",
+            ],
+            "searchDir": [],
+            "runToEntryPoint": "main",
+            "svdFile": "C:/Keil_v5/ARM/PACK/Keil/STM32F0xx_DFP/2.1.1/CMSIS/SVD/STM32F072x.svd",
+            "armToolchainPath": "C:/Program Files (x86)/GNU Arm Embedded Toolchain/10 2021.10/bin/"
+        }
+    ]
+}
