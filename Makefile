@@ -36,6 +36,8 @@ BUILD_DIR = build
 ######################################
 # C sources
 C_SOURCES =  \
+Core/Src/lcd.c \
+Core/Src/lcd_init.c \
 Core/Src/u8g2/u8g2_d_setup.c \
 Core/Src/u8g2/u8g2_message.c \
 Core/Src/u8g2/u8x8_byte.c \

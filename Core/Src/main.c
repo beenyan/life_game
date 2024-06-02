@@ -30,6 +30,8 @@
 #include <time.h>
 
 #include "FreeRTOS.h"
+#include "lcd.h"
+#include "lcd_init.h"
 #include "oled.h"
 #include "queue.h"
 #include "rust.h"
@@ -52,8 +54,18 @@
 #define SCALE 4
 #define W_SIZE WIDTH / SCALE
 #define H_SIZE HEIGHT / SCALE
+u8 is_stop = 0;
+
+struct OLED {
+    u64 step;
+    u8 mode;
+    u16 delay;
+};
+
+TaskHandle_t handle_lcd;
 TaskHandle_t handleOled;
 QueueHandle_t queueSwitch;
+QueueHandle_t queueOled;
 
 u8g2_t u8g2;
 /* USER CODE END PD */
@@ -78,6 +90,10 @@ void MX_FREERTOS_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+u32 delay_fn(u16 x) {
+    return (3000 * x) / (x + 30) + 10;
+}
+
 u8 calc_around(u8 world[H_SIZE][W_SIZE], u16 x, u16 y) {
     u8 count = 0;
     for (i8 dy = -1; dy <= 1; ++dy) {
@@ -105,6 +121,7 @@ void init_data(u8 world[H_SIZE][W_SIZE], u8 near[H_SIZE][W_SIZE]) {
         }
     }
 }
+
 /**********************
 receive data from queue
 success -> pdPASS(1) -> update OLED
@@ -121,7 +138,8 @@ void taskOLED(void *pvParm) {
     init_data(world, near);
     u64 step = 0;
     u8 mode = 255;
-    u32 xTicksToDelay = 500;
+    u16 delay = 6;
+    struct OLED oled;
     while (1) {
         xQueueReceive(queueSwitch, &mode, 0);
         switch (mode) {
@@ -130,23 +148,18 @@ void taskOLED(void *pvParm) {
                 mode = 255;
                 init_data(world, near);
                 break;
-            case 1:
-                vTaskDelay(500);
-                continue;
             case 2:
-                xTicksToDelay += 50;
+                delay = delay == 3000 ? 3000 : delay + 1;
                 mode = 255;
                 break;
             case 3:
-                if (xTicksToDelay <= 60)
-                    xTicksToDelay = 10;
-                else
-                    xTicksToDelay -= 50;
+                delay = delay == 0 ? 0 : delay - 1;
                 mode = 255;
                 break;
         }
+
+        if (is_stop) goto end;
         u8g2_ClearBuffer(&u8g2);
-        u32 survive_amount = 0;
         if (step != 0) {
             for (u16 y = 0; y < H_SIZE; ++y) {
                 for (u16 x = 0; x < W_SIZE; ++x) {
@@ -166,27 +179,44 @@ void taskOLED(void *pvParm) {
                     }
                 }
 
-                if (world[y][x]) {
-                    u8g2_DrawBox(&u8g2, x * SCALE, y * SCALE, SCALE, SCALE);
-                }
+                if (!world[y][x]) continue;
 
-                survive_amount += world[y][x];
+                u8g2_DrawBox(&u8g2, x * SCALE, y * SCALE, SCALE, SCALE);
             }
-        }
-
-        // No survive life
-        if (survive_amount == 0) {
-            step = 0;
-            init_data(world, near);
         }
 
         ++step;
         u8g2_SendBuffer(&u8g2);
-        vTaskDelay(xTicksToDelay);
+    end:
+        oled.delay = delay_fn(delay);
+        oled.mode = mode;
+        oled.step = step;
+        xQueueSendFromISR(queueOled, &oled, NULL);
+        vTaskDelay(oled.delay);
     }
 }
 
-u8 is_stop = 0;
+void lcd_handle(void *pvParm) {
+    LCD_Fill(0, 0, 240, 240, BLACK);
+    struct OLED oled;
+    u8 font_szie = 32;
+    u8 step[20];
+    u8 delay[20];
+    u8 mode[20];
+    while (1) {
+        xQueueReceive(queueOled, &oled, 0);
+
+        char temp[20];
+        snprintf((char *)step, sizeof(step), "Step: %-10s", utoa(oled.step, temp, 10));
+        snprintf((char *)delay, sizeof(delay), "Delay: %sms%-5s", utoa(oled.delay, temp, 10), "");
+        snprintf((char *)mode, sizeof(mode), "Stop: %-10s", is_stop == 1 ? "True" : "False");
+        LCD_ShowString(0, 104 - font_szie, step, WHITE, BLACK, font_szie, 0);
+        LCD_ShowString(0, 104, delay, WHITE, BLACK, font_szie, 0);
+        LCD_ShowString(0, 104 + font_szie, mode, WHITE, BLACK, font_szie, 0);
+        vTaskDelay(10);
+    }
+}
+
 void HAL_GPIO_EXTI_Callback(u16 GPIO_Pin) {
     u8 mode = 255;
 
@@ -203,14 +233,7 @@ void HAL_GPIO_EXTI_Callback(u16 GPIO_Pin) {
         // sw2 PE4
         case GPIO_PIN_4: {
             if (HAL_GPIO_ReadPin(SW2_GPIO_Port, SW2_Pin) == 1) {
-                if (is_stop == 0) {
-                    is_stop = 1;
-                    mode = 1;
-                } else {
-                    is_stop = 0;
-                    mode = 255;
-                }
-                xQueueSendFromISR(queueSwitch, &mode, NULL);
+                is_stop = (is_stop == 0 ? 1 : 0);
             }
             break;
         }
@@ -239,7 +262,6 @@ void HAL_GPIO_EXTI_Callback(u16 GPIO_Pin) {
             break;
     }
 }
-
 /* USER CODE END 0 */
 
 /**
@@ -257,6 +279,7 @@ int main(void) {
     HAL_Init();
 
     /* USER CODE BEGIN Init */
+    LCD_Address_Set(0, 0, 240, 240);
 
     /* USER CODE END Init */
 
@@ -272,8 +295,13 @@ int main(void) {
     MX_I2C1_Init();
     MX_USART3_UART_Init();
     /* USER CODE BEGIN 2 */
+    LCD_Init();
+    LCD_CS_Clr();
+
     queueSwitch = xQueueCreate(1, sizeof(u8));
+    queueOled = xQueueCreate(1, sizeof(struct OLED));
     xTaskCreate(taskOLED, "OLED", 512, NULL, 1, &handleOled);
+    xTaskCreate(lcd_handle, "LCD Display", 512, NULL, 1, &handle_lcd);
 
     vTaskStartScheduler();
     /* USER CODE END 2 */
@@ -281,13 +309,14 @@ int main(void) {
     /* Init scheduler */
     osKernelInitialize();
 
-    /* Call init function for freertos objects (in freertos.c) */
+    /* Call init function for freertos objects (in cmsis_os2.c) */
     MX_FREERTOS_Init();
 
     /* Start scheduler */
     osKernelStart();
 
     /* We should never get here as control is now taken by the scheduler */
+
     /* Infinite loop */
     /* USER CODE BEGIN WHILE */
     while (1) {

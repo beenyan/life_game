@@ -13,4 +13,7 @@ typedef __INT16_TYPE__ i16;
 typedef __INT32_TYPE__ i32;
 typedef __INT64_TYPE__ i64;
 
+typedef float f32;
+typedef double f64;
+
 #endif  // RSUT_TYPE_DEFINED

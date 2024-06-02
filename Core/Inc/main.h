@@ -69,8 +69,20 @@ void Error_Handler(void);
 #define SW4_Pin GPIO_PIN_6
 #define SW4_GPIO_Port GPIOE
 #define SW4_EXTI_IRQn EXTI9_5_IRQn
-#define SCL_Pin GPIO_PIN_8
+#define CS_Pin GPIO_PIN_4
+#define CS_GPIO_Port GPIOA
+#define RES_Pin GPIO_PIN_14
+#define RES_GPIO_Port GPIOD
+#define BLK_Pin GPIO_PIN_15
+#define BLK_GPIO_Port GPIOD
+#define SCL_Pin GPIO_PIN_3
 #define SCL_GPIO_Port GPIOB
+#define MOSI_Pin GPIO_PIN_4
+#define MOSI_GPIO_Port GPIOB
+#define DC_Pin GPIO_PIN_5
+#define DC_GPIO_Port GPIOB
+#define SCLB8_Pin GPIO_PIN_8
+#define SCLB8_GPIO_Port GPIOB
 #define SDA_Pin GPIO_PIN_9
 #define SDA_GPIO_Port GPIOB
 
