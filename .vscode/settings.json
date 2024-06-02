@@ -12,6 +12,12 @@
         "task.h": "c",
         "stm32f4xx_hal.h": "c",
         "image.h": "c",
-        "usart.h": "c"
+        "usart.h": "c",
+        "time.h": "c",
+        "stdlib.h": "c",
+        "circular_queue.h": "c",
+        "rust.h": "c",
+        "lcd_init.h": "c",
+        "oled.h": "c"
     }
 }

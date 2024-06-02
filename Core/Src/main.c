@@ -26,10 +26,12 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdbool.h>
 #include <stdlib.h>
 #include <time.h>
 
 #include "FreeRTOS.h"
+#include "circular_queue.h"
 #include "lcd.h"
 #include "lcd_init.h"
 #include "oled.h"
@@ -58,8 +60,8 @@ u8 is_stop = 0;
 
 struct OLED {
     u64 step;
-    u8 mode;
     u16 delay;
+    u8 circular;
 };
 
 TaskHandle_t handle_lcd;
@@ -94,7 +96,21 @@ u32 delay_fn(u16 x) {
     return (3000 * x) / (x + 30) + 10;
 }
 
-u8 calc_around(u8 world[H_SIZE][W_SIZE], u16 x, u16 y) {
+u64 compute_hash(bool array[H_SIZE][W_SIZE]) {
+    u64 hash = 0x3a7eb429;
+    for (int i = 0; i < H_SIZE; i++) {
+        for (int j = 0; j < W_SIZE; j++) {
+            hash = (hash >> 1) | (hash << (sizeof(u64) * 8 - 1));
+            hash ^= array[i][j] * 0xee6b2807;
+        }
+    }
+
+    hash *= 0xee6b2807;
+    hash ^= hash >> 32;
+    return hash;
+}
+
+u8 calc_around(bool world[H_SIZE][W_SIZE], u16 x, u16 y) {
     u8 count = 0;
     for (i8 dy = -1; dy <= 1; ++dy) {
         for (i8 dx = -1; dx <= 1; ++dx) {
@@ -113,10 +129,9 @@ u8 calc_around(u8 world[H_SIZE][W_SIZE], u16 x, u16 y) {
     return count;
 }
 
-void init_data(u8 world[H_SIZE][W_SIZE], u8 near[H_SIZE][W_SIZE]) {
+void init_data(bool world[H_SIZE][W_SIZE]) {
     for (u16 y = 0; y < H_SIZE; ++y) {
         for (u16 x = 0; x < W_SIZE; ++x) {
-            near[y][x] = 0;
             world[y][x] = (rand() % 5 < 1 ? 1 : 0);
         }
     }
@@ -134,19 +149,22 @@ void taskOLED(void *pvParm) {
     u8g2_ClearDisplay(&u8g2);
     u8g2_SetFont(&u8g2, u8g2_font_samim_16_t_all);
     u8 near[H_SIZE][W_SIZE];
-    u8 world[H_SIZE][W_SIZE];
-    init_data(world, near);
+    bool world[H_SIZE][W_SIZE];
+    init_data(world);
+    struct circular_queue history = circular_queue_new(5);
     u64 step = 0;
     u8 mode = 255;
     u16 delay = 6;
     struct OLED oled;
+    oled.circular = 0;
     while (1) {
         xQueueReceive(queueSwitch, &mode, 0);
         switch (mode) {
             case 0:
                 step = 0;
                 mode = 255;
-                init_data(world, near);
+                oled.circular = 0;
+                init_data(world);
                 break;
             case 2:
                 delay = delay == 3000 ? 3000 : delay + 1;
@@ -187,9 +205,18 @@ void taskOLED(void *pvParm) {
 
         ++step;
         u8g2_SendBuffer(&u8g2);
+        circular_queue_push_back(&history, compute_hash(world));
+        if (history.size >= 2) {
+            u64 sample = circular_queue_get_back(&history, 0);
+            for (u64 i = 1; i < history.size; ++i) {
+                if (sample == circular_queue_get_back(&history, i)) {
+                    oled.circular = i;
+                    break;
+                }
+            }
+        }
     end:
         oled.delay = delay_fn(delay);
-        oled.mode = mode;
         oled.step = step;
         xQueueSendFromISR(queueOled, &oled, NULL);
         vTaskDelay(oled.delay);
@@ -202,17 +229,20 @@ void lcd_handle(void *pvParm) {
     u8 font_szie = 32;
     u8 step[20];
     u8 delay[20];
-    u8 mode[20];
+    u8 stop[20];
+    u8 circular[20];
     while (1) {
         xQueueReceive(queueOled, &oled, 0);
 
         char temp[20];
         snprintf((char *)step, sizeof(step), "Step: %-10s", utoa(oled.step, temp, 10));
         snprintf((char *)delay, sizeof(delay), "Delay: %sms%-5s", utoa(oled.delay, temp, 10), "");
-        snprintf((char *)mode, sizeof(mode), "Stop: %-10s", is_stop == 1 ? "True" : "False");
+        snprintf((char *)stop, sizeof(stop), "Stop: %-10s", is_stop == 1 ? "True" : "False");
+        snprintf((char *)circular, sizeof(circular), "Circular: %-6s", utoa(oled.circular, temp, 10));
         LCD_ShowString(0, 104 - font_szie, step, WHITE, BLACK, font_szie, 0);
         LCD_ShowString(0, 104, delay, WHITE, BLACK, font_szie, 0);
-        LCD_ShowString(0, 104 + font_szie, mode, WHITE, BLACK, font_szie, 0);
+        LCD_ShowString(0, 104 + font_szie, stop, WHITE, BLACK, font_szie, 0);
+        LCD_ShowString(0, 104 + font_szie * 2, circular, WHITE, BLACK, font_szie, 0);
         vTaskDelay(10);
     }
 }

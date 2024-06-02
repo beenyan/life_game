@@ -36,6 +36,7 @@ BUILD_DIR = build
 ######################################
 # C sources
 C_SOURCES =  \
+Core/Src/circular_queue.c \
 Core/Src/lcd.c \
 Core/Src/lcd_init.c \
 Core/Src/u8g2/u8g2_d_setup.c \
